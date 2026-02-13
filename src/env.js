@@ -12,8 +12,12 @@ export const env = createEnv({
       .enum(["development", "test", "production"])
       .default("development"),
     CLERK_SECRET_KEY: z.string(),
-    GITHUB_CLIENT_SECRET: z.string(),
-    GITHUB_CLIENT_ID: z.string(),
+    GITHUB_APP_CLIENT_SECRET: z.string(),
+    GITHUB_APP_CLIENT_ID: z.string(),
+    GITHUB_APP_ID: z.string(),
+    GITHUB_APP_PRIVATE_KEY: z.string(),
+    GITHUB_WEBHOOK_SECRET: z.string(),
+    NGROK_DOMAIN: z.string().optional(),
   },
 
   /**
@@ -34,8 +38,12 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-    GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
-    GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+    GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
+    GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
+    GITHUB_APP_ID: process.env.GITHUB_APP_ID,
+    GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
+    GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET,
+    NGROK_DOMAIN: process.env.NGROK_DOMAIN,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

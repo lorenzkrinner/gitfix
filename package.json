@@ -17,10 +17,13 @@
     "lint:fix": "next lint --fix",
     "preview": "next build && next start",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ngrok": "node scripts/ngrok.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.37.3",
+    "@octokit/app": "^16.1.2",
+    "@octokit/rest": "^22.0.1",
     "@t3-oss/env-nextjs": "^0.12.0",
     "@tanstack/react-query": "^5.69.0",
     "@trpc/client": "^11.0.0",
