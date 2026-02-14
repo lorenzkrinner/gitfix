@@ -111,12 +111,10 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 export const publicProcedure = t.procedure.use(timingMiddleware);
 
 /**
- * Protected (authenticated) procedure
+ * Session-protected procedure
  *
- * If you want a query or mutation to ONLY be accessible to logged in users, use this. It verifies
- * the session is valid and guarantees `ctx.userId` is not null.
- *
- * @see https://trpc.io/docs/procedures
+ * Requires a logged-in user. Guarantees `ctx.userId` is not null.
+ * Use this for procedures that only need user authentication without an active organization.
  */
 const enforceUserIsAuthed = t.middleware(async ({ ctx, next }) => {
   if (!ctx.userId) {
@@ -130,4 +128,28 @@ const enforceUserIsAuthed = t.middleware(async ({ ctx, next }) => {
   });
 });
 
-export const protectedProcedure = publicProcedure.use(enforceUserIsAuthed);
+export const sessionProtectedProcedure = publicProcedure.use(enforceUserIsAuthed);
+
+/**
+ * Protected procedure
+ *
+ * Requires a logged-in user AND an active organization. Guarantees both
+ * `ctx.userId` and `ctx.orgId` are non-null. This is the default for most procedures.
+ */
+const enforceOrgIsActive = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.userId || !ctx.orgId) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "An active organization is required.",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      userId: ctx.userId,
+      orgId: ctx.orgId,
+    },
+  });
+});
+
+export const protectedProcedure = publicProcedure.use(enforceOrgIsActive);

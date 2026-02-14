@@ -132,7 +132,7 @@ export const repositoryRouter = createTRPCRouter({
       const existing = await ctx.db.query.repositories.findFirst({
         where: and(
           eq(repositories.githubRepoId, input.githubRepoId),
-          eq(repositories.userId, ctx.userId),
+          eq(repositories.organizationId, ctx.orgId),
           eq(repositories.isActive, true),
         ),
       });
@@ -148,7 +148,7 @@ export const repositoryRouter = createTRPCRouter({
         .insert(repositories)
         .values({
           userId: ctx.userId,
-          organizationId: ctx.orgId ?? null,
+          organizationId: ctx.orgId,
           githubRepoId: input.githubRepoId,
           fullName: input.fullName,
           installationId: input.installationId,
@@ -165,7 +165,7 @@ export const repositoryRouter = createTRPCRouter({
       const repo = await ctx.db.query.repositories.findFirst({
         where: and(
           eq(repositories.id, input.id),
-          eq(repositories.userId, ctx.userId),
+          eq(repositories.organizationId, ctx.orgId),
         ),
       });
 
@@ -182,7 +182,7 @@ export const repositoryRouter = createTRPCRouter({
   list: protectedProcedure.query(async ({ ctx }) => {
     return ctx.db.query.repositories.findMany({
       where: and(
-        eq(repositories.userId, ctx.userId),
+        eq(repositories.organizationId, ctx.orgId),
         eq(repositories.isActive, true),
       ),
       orderBy: (repos, { desc }) => [desc(repos.createdAt)],

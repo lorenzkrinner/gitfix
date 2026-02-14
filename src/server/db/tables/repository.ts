@@ -6,7 +6,7 @@ export const repositories = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: text("user_id").notNull(),
-    organizationId: text("organization_id"),
+    organizationId: text("organization_id").notNull(),
     githubRepoId: text("github_repo_id").notNull(),
     fullName: text("full_name").notNull(),
     installationId: text("installation_id").notNull(),

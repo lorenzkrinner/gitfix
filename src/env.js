@@ -18,6 +18,8 @@ export const env = createEnv({
     GITHUB_APP_PRIVATE_KEY: z.string(),
     GITHUB_WEBHOOK_SECRET: z.string(),
     NGROK_DOMAIN: z.string().optional(),
+    INNGEST_EVENT_KEY: z.string().optional(),
+    INNGEST_SIGNING_KEY: z.string().optional(),
   },
 
   /**
@@ -44,6 +46,8 @@ export const env = createEnv({
     GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
     GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET,
     NGROK_DOMAIN: process.env.NGROK_DOMAIN,
+    INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
+    INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

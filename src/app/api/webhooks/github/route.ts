@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { env } from "~/env";
+import { db } from "~/server/db";
+import { repositories } from "~/server/db/tables/repository";
+import { issues } from "~/server/db/tables/issue";
+import { inngest } from "~/lib/inngest/client";
 
 type GithubEvent =
   | "issues"
@@ -90,7 +95,13 @@ function verifySignature(payload: string, signature: string | null): boolean {
 async function handleIssuesEvent(payload: unknown) {
   const issuePayload = payload as {
     action?: string;
-    issue?: { id?: number; number?: number; title?: string | null; html_url?: string };
+    issue?: {
+      id?: number;
+      number?: number;
+      title?: string | null;
+      body?: string | null;
+      html_url?: string;
+    };
     repository?: { full_name?: string; id?: number };
     installation?: { id?: number };
   };
@@ -103,13 +114,57 @@ async function handleIssuesEvent(payload: unknown) {
   });
 
   switch (action) {
-    case "opened":
-      // Pseudo code placeholder: store issue + enqueue triage workflow.
-      // await db.insert(issues).values(...);
-      // inngest.send("issue.triage", { issueId, github: issuePayload });
+    case "opened": {
+      const ghIssue = issuePayload.issue;
+      const ghRepo = issuePayload.repository;
+
+      if (!ghIssue?.id || !ghIssue.number || !ghIssue.title || !ghIssue.html_url || !ghRepo?.id) {
+        console.warn("[github-webhook] incomplete issue payload, skipping");
+        return;
+      }
+
+      const repo = await db.query.repositories.findFirst({
+        where: eq(repositories.githubRepoId, String(ghRepo.id)),
+      });
+
+      if (!repo?.isActive) {
+        console.info("[github-webhook] repo not connected or inactive, skipping", {
+          githubRepoId: ghRepo.id,
+        });
+        return;
+      }
+
+      const [issue] = await db
+        .insert(issues)
+        .values({
+          repositoryId: repo.id,
+          githubIssueNumber: ghIssue.number,
+          githubIssueId: String(ghIssue.id),
+          title: ghIssue.title,
+          body: ghIssue.body ?? null,
+          url: ghIssue.html_url,
+          status: "analyzing",
+          startedAt: new Date(),
+        })
+        .returning();
+
+      if (!issue) {
+        console.error("[github-webhook] failed to insert issue");
+        return;
+      }
+
+      await inngest.send({
+        name: "issue/triage-and-fix",
+        data: { issueId: issue.id },
+      });
+
+      console.info("[github-webhook] issue created and triage enqueued", {
+        issueId: issue.id,
+        githubIssueNumber: ghIssue.number,
+      });
       break;
+    }
     case "labeled":
-      // TODO: react to ai:* labels when business rules are ready.
       break;
     default:
       console.debug("[github-webhook] issues action not handled", { action });
