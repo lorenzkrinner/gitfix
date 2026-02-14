@@ -160,7 +160,7 @@ export const repositoryRouter = createTRPCRouter({
     }),
 
   get: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const repo = await ctx.db.query.repositories.findFirst({
         where: and(

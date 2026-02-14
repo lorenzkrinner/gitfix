@@ -5,8 +5,10 @@ export default function ReposLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="flex flex-col min-h-screen">
-    <TopNav />
-    {children}
-  </div>;
+  return (
+    <div className="flex flex-col min-h-screen">
+      <TopNav />  
+      {children}
+    </div>
+  );
 }

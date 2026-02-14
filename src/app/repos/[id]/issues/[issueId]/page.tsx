@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { Button } from "~/components/ui/button";
-import { ArrowLeftCircleIcon } from "@heroicons/react/24/solid";
+
 import { api } from "~/trpc/server";
-import { IssueTimeline } from "../_components/issue-timeline";
+import { IssueDetailClient } from "./issue-detail-client";
+import { NavArrowLeftSolid } from "iconoir-react";
 
 export default async function IssueDetailPage({
   params,
@@ -14,16 +15,13 @@ export default async function IssueDetailPage({
 
   return (
     <div className="container mx-auto max-w-4xl p-8 flex flex-col gap-4">
-      <Link href={`/repos/${id}`}>
-        <Button variant="outline">
-          <ArrowLeftCircleIcon className="w-4 h-4" />
+      <Link href={`/repos/${id}`} className="w-fit">
+        <Button variant="ghost" size="sm">
+          <NavArrowLeftSolid className="size-4" />
           Back to Repository
         </Button>
       </Link>
-      <IssueTimeline
-        issue={issue}
-        initialActivity={issue.activity}
-      />
+      <IssueDetailClient issue={issue} />
     </div>
   );
 }

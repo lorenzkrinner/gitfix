@@ -1,16 +1,19 @@
 export const ISSUE_ACTIVITY_TYPES = [
   "triage",
   "reasoning",
+  "repo_clone",
   "web_search",
   "file_read",
   "file_change",
   "run_command",
   "tool_call",
   "error",
-  "pr_opened",
-  "ci_result",
-  "escalated",
+  "pr_created",
+  "ci_status",
+  "pr_merged",
+  "comment_drafted",
   "comment_posted",
+  "escalated",
   "done",
 ] as const;
 

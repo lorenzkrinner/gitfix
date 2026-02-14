@@ -20,6 +20,8 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { GITHUB_APP_INSTALL_URL } from "~/lib/constants/github";
+import { GithubIcon } from "~/components/icons";
+import { Spinner } from "~/components/ui/spinner";
 
 export default function NewRepoPage() {
   const router = useRouter();
@@ -58,7 +60,7 @@ export default function NewRepoPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-2xl p-8">
+    <div className="container mx-auto max-w-2xl my-auto p-8 pb-32">
       <Card>
         <CardHeader>
           <CardTitle>Connect Repository</CardTitle>
@@ -70,16 +72,16 @@ export default function NewRepoPage() {
           <div className="space-y-2">
             <Label htmlFor="repo-select">Repository</Label>
             <Select value={selectedRepo} onValueChange={setSelectedRepo}>
-              <SelectTrigger id="repo-select">
+              <SelectTrigger id="repo-select" className="w-full">
                 <SelectValue placeholder="Select a repository" />
               </SelectTrigger>
               <SelectContent>
                 {repos?.map((repo) => (
                   <SelectItem key={repo.id} value={repo.id}>
+                    <GithubIcon />
                     {repo.fullName}
-                    {repo.appInstalled ? " ✓" : " (App not installed)"}
                   </SelectItem>
-                ))}
+                ))} 
               </SelectContent>
             </Select>
           </div>
@@ -115,15 +117,17 @@ export default function NewRepoPage() {
               value={mode}
               onValueChange={(v) => setMode(v as "auto" | "approval")}
             >
-              <SelectTrigger id="mode-select">
+              <SelectTrigger id="mode-select" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="approval">
-                  Approval - Review PRs before merge
+                  Approval
+                  <span className="text-xs text-muted-foreground">Review PRs before merge</span>
                 </SelectItem>
                 <SelectItem value="auto">
-                  Auto - Merge PRs automatically
+                  Auto
+                  <span className="text-xs text-muted-foreground">Merge PRs automatically</span>
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -134,7 +138,7 @@ export default function NewRepoPage() {
             disabled={!selectedRepo || !canConnect || connectMutation.isPending}
             className="w-full"
           >
-            {connectMutation.isPending ? "Connecting..." : "Connect Repository"}
+            {connectMutation.isPending ? <Spinner /> : "Connect Repository"}
           </Button>
 
           {connectMutation.error && (

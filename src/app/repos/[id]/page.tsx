@@ -9,8 +9,11 @@ import {
 } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { ArrowLeftCircleIcon } from "@heroicons/react/24/solid";
+import { MagnifyingGlassCircleIcon } from "@heroicons/react/24/solid";
 import { StatusBadge } from "./issues/_components/status-badge";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
+import { GithubIcon } from "~/components/icons";
+import { NavArrowLeftSolid } from "iconoir-react";
 
 export default async function RepoPage({
   params,
@@ -18,25 +21,32 @@ export default async function RepoPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [repo, repoIssues] = await Promise.all([
-    api.repository.get({ id }),
-    api.issue.list({ repositoryId: id }),
-  ]);
+
+  const repo = await api.repository.get({ id });
+  const repoIssues = await api.issue.list({ repositoryId: repo.id });
 
   return (
     <div className="container mx-auto max-w-4xl p-8 flex flex-col gap-6">
-      <Link href="/repos">
-        <Button variant="outline">
-          <ArrowLeftCircleIcon className="w-4 h-4" />
+      <Link href="/repos" className="w-fit">
+        <Button variant="ghost" size="sm">
+          <NavArrowLeftSolid className="size-4" />
           Back to Repositories
         </Button>
       </Link>
 
-      <Card>
+      <Card className="pb-2">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>{repo.fullName}</CardTitle>
-            <div className="flex items-center gap-2">
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col items-start gap-2">
+              <div className="flex items-center gap-2">
+                <GithubIcon className="size-4 shrink-0 text-muted-foreground" />
+                <CardTitle className="leading-none">{repo.fullName}</CardTitle>
+              </div>
+              <CardDescription className="text-xs text-muted-foreground">
+                Connected {new Date(repo.createdAt).toLocaleDateString()}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1">
               <Badge variant="outline">
                 {repo.mode === "auto" ? "Auto-merge" : "Approval"}
               </Badge>
@@ -45,7 +55,6 @@ export default async function RepoPage({
               </Badge>
             </div>
           </div>
-          <CardDescription>Repository Configuration</CardDescription>
         </CardHeader>
       </Card>
 
@@ -53,20 +62,25 @@ export default async function RepoPage({
         <h2 className="text-xl font-semibold mb-4">Issues</h2>
 
         {repoIssues.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <p className="text-muted-foreground text-center">
-                No issues processed yet. Issues will appear here when they are
-                created in your GitHub repository.
-              </p>
-            </CardContent>
-          </Card>
+          <Empty className="pt-10">
+            <EmptyContent>
+              <EmptyMedia>
+                <MagnifyingGlassCircleIcon className="size-10 text-muted-foreground" />
+              </EmptyMedia>
+              <EmptyHeader>
+                <EmptyTitle>No issues processed yet</EmptyTitle>
+                <EmptyDescription>
+                  Issues will appear here when they are created in your GitHub repository.
+                </EmptyDescription>
+              </EmptyHeader>
+            </EmptyContent>
+          </Empty>
         ) : (
           <div className="flex flex-col gap-2">
             {repoIssues.map((issue) => (
               <Link key={issue.id} href={`/repos/${id}/issues/${issue.id}`}>
-                <Card className="transition-shadow hover:shadow-md">
-                  <CardContent className="flex items-center justify-between py-4">
+                <Card className="transition-shadow hover:shadow-md border-none">
+                  <CardContent className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-sm text-muted-foreground font-mono">
                         #{issue.githubIssueNumber}

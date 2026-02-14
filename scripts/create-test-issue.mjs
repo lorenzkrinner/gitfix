@@ -1,34 +1,55 @@
 import { spawn } from "node:child_process";
 
 const repo = "lorenzkrinner/gitfix-testing";
-const title = "TypeError when session expires: Cannot read property 'userId' of null";
-const body = `**What happened**
+const title =
+  "Bug: Dashboard shows wrong user's data after switching accounts";
+const body = `**Describe the bug**
 
-When a user's session expires during a request, the app crashes instead of returning a proper error.
+When switching between accounts quickly on the dashboard, the stats and activity feed sometimes show the **previous user's data** instead of the currently logged-in user. This is intermittent — it seems to happen when the account switch and the data fetch overlap.
 
-**Error**
+**To reproduce**
 
-TypeError: Cannot read property 'userId' of null
+1. Log in as User A. Navigate to the dashboard and wait for it to load.
+2. Use the account switcher to switch to User B.
+3. Observe the dashboard — about 1 in 3 times, User A's stats (total projects, recent activity) still appear even though the header shows User B.
+4. Navigating away and back to the dashboard fixes it.
 
-**Where**
+**Expected behavior**
 
-Happens in the auth flow when calling \`getUser(token)\` with an expired or invalid token. Stack trace points to src/utils/auth.ts (around the line that uses the decoded token).
+The dashboard should always show the currently authenticated user's data immediately after switching accounts.
 
-**Steps to reproduce**
-1. Log in so you have a valid session/token.
-2. Wait for the token to expire (or manually invalidate it).
-3. Make any authenticated request that goes through \`getUser()\`.
-4. Server throws the TypeError above.
+**Stack trace / error**
 
-**Expected**
+No error is thrown — the wrong data is silently displayed. However, adding a console.log inside the useEffect in \`src/components/Dashboard.tsx\` shows that the \`userId\` captured in the closure is stale:
 
-We should get a clear auth error (e.g. 401) and a message like "Invalid or expired token", not a 500 and a stack trace.
+\`\`\`
+[Dashboard] useEffect fired: userId=user_abc123   // <-- stale, should be user_xyz789
+[Dashboard] fetchUserStats called with: user_abc123
+\`\`\`
+
+**Relevant code**
+
+The issue seems to be in \`src/components/Dashboard.tsx\` around the \`useEffect\` that fetches user stats. The effect depends on \`session\` but doesn't properly include \`userId\` in its dependency array, and there's no cleanup/abort when the user changes.
+
+The \`useAuth\` hook in \`src/hooks/useAuth.ts\` provides the current user and session info.
 
 **Environment**
 
-Node 20, latest main.`;
+- Next.js 14.2, React 18
+- Node 20
+- Happens in both Chrome and Firefox
+- Only in development and production, not in tests (tests mock the auth)`;
 
-const args = ["issue", "create", "--repo", repo, "--title", title, "--body", body];
+const args = [
+  "issue",
+  "create",
+  "--repo",
+  repo,
+  "--title",
+  title,
+  "--body",
+  body,
+];
 
 const proc = spawn("gh", args, { stdio: "inherit" });
 proc.on("exit", (code) => process.exit(code ?? 0));

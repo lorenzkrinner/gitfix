@@ -1,11 +1,17 @@
 export const REALTIME_TOPICS = [
   "triage",
   "reasoning",
+  "repo_clone",
   "file_read",
   "file_change",
   "run_command",
   "web_search",
   "tool_call",
   "error",
+  "pr_created",
+  "ci_status",
+  "pr_merged",
+  "comment_drafted",
+  "comment_posted",
   "done",
 ] as const;

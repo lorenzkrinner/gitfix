@@ -2,68 +2,61 @@ import Link from "next/link";
 import { api } from "~/trpc/server";
 import {
   Card,
+  CardContainer,
   CardContent,
-  CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
-import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
+import { PlusCircleIcon } from "@heroicons/react/24/solid";
+import { GithubIcon } from "~/components/icons";
 
 export default async function ReposPage() {
   const repos = await api.repository.list();
 
   return (
     <div className="container mx-auto p-8">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Connected Repositories</h1>
-          <p className="text-muted-foreground">
-            Manage repositories with AI-powered issue fixes
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/repos/new">Connect Repository</Link>
-        </Button>
+      <div className="mb-8 flex items-center justify-start">
+        <h1 className="text-lg text-foreground font-medium">Connected Repositories</h1>
       </div>
 
-      {repos.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <p className="mb-4 text-muted-foreground">
-              No repositories connected yet
-            </p>
-            <Button asChild>
-              <Link href="/repos/new">Connect Your First Repository</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {repos.map((repo) => (
-            <Link key={repo.id} href={`/repos/${repo.id}`}>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Link href="/repos/new" className="flex-1 h-full ">
+          <Card className="border-dotted border-3! transition-colors hover:border-accent group h-full">
+            <CardContent className="cursor-pointer flex-1 flex center">
+              <PlusCircleIcon className="text-muted-foreground size-8 group-hover:text-secondary transition-colors" />
+            </CardContent>
+          </Card>
+        </Link>
+        {repos.map((repo) => (
+          <Link key={repo.id} href={`/repos/${repo.id}`}>
+            <CardContainer>
               <Card className="transition-shadow hover:shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-lg">{repo.fullName}</CardTitle>
-                  <CardDescription>
-                    <Badge variant="outline" className="mt-2">
+                  <div className="flex items-center gap-2">
+                    <GithubIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <CardTitle className="text-lg">{repo.fullName}</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default">
+                        {repo.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                    <Badge variant="outline">
                       {repo.mode === "auto" ? "Auto-merge" : "Approval required"}
                     </Badge>
-                  </CardDescription>
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    Max retries: {repo.maxRetries}
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    Connected {new Date(repo.createdAt).toLocaleDateString()}
-                  </div>
-                </CardContent>
               </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+              <CardFooter className="py-2">
+                <div className="text-xs text-start w-full text-muted-foreground">
+                  Connected {new Date(repo.createdAt).toLocaleDateString()}
+                </div>
+              </CardFooter>
+            </CardContainer>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
