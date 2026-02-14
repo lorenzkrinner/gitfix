@@ -1,73 +1,30 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  MagnifyingGlassIcon,
-  DocumentTextIcon,
-  CodeBracketIcon,
-  CommandLineIcon,
-  ExclamationTriangleIcon,
+  ArrowUpRightIcon,
   CheckCircleIcon,
-  LightBulbIcon,
-  WrenchScrewdriverIcon,
-  ArrowPathIcon,
-  ChatBubbleLeftIcon,
-  ArrowsRightLeftIcon,
 } from "@heroicons/react/24/solid";
 import {
   useInngestSubscription,
   InngestSubscriptionState,
 } from "@inngest/realtime/hooks";
 import { CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Button } from "~/components/ui/button";
-import { Spinner } from "~/components/ui/spinner";
 import { refreshRealtimeToken } from "~/server/actions/realtime";
 import type { IssueStatus } from "~/lib/types/issue";
 import type { IssueActivityType } from "~/lib/types/issue";
 import type { IssueActivity } from "~/server/db/tables";
 import type { Issue } from "~/server/db/tables/issue";
-import { Markdown } from "~/components/ui/markdown";
-import { api } from "~/trpc/react";
+import { Shimmer } from "~/components/ai-elements/shimmer";
+import ReasoningDetails from "./activity/reasoning-details";
+import DiffViewer from "./activity/diff-viewer";
+import CollapsibleOutput from "./activity/collabsible-output";
+import { DraftComment } from "./activity/draft-comment";
+import { Spinner } from "~/components/ui/spinner";
+import { Separator } from "~/components/ui/separator";
+import Link from "next/link";
 
 const ACTIVE_STATUSES: IssueStatus[] = ["analyzing", "fixing"];
-
-const ACTIVITY_ICONS: Record<IssueActivityType, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
-  triage: MagnifyingGlassIcon,
-  reasoning: LightBulbIcon,
-  repo_clone: ArrowPathIcon,
-  web_search: MagnifyingGlassIcon,
-  file_read: DocumentTextIcon,
-  file_change: CodeBracketIcon,
-  run_command: CommandLineIcon,
-  tool_call: WrenchScrewdriverIcon,
-  error: ExclamationTriangleIcon,
-  pr_created: CodeBracketIcon,
-  ci_status: CheckCircleIcon,
-  pr_merged: ArrowsRightLeftIcon,
-  comment_drafted: ChatBubbleLeftIcon,
-  comment_posted: ChatBubbleLeftIcon,
-  escalated: ExclamationTriangleIcon,
-  done: CheckCircleIcon,
-};
-
-const ACTIVITY_LABELS: Record<IssueActivityType, string> = {
-  triage: "Triage",
-  reasoning: "Reasoning",
-  repo_clone: "Clone Repository",
-  web_search: "Web Search",
-  file_read: "File Read",
-  file_change: "File Change",
-  run_command: "Command",
-  tool_call: "Tool Call",
-  error: "Error",
-  pr_created: "Pull Request",
-  ci_status: "CI Status",
-  pr_merged: "PR Merged",
-  comment_drafted: "Comment Drafted",
-  comment_posted: "Comment Posted",
-  escalated: "Escalated",
-  done: "Done",
-};
 
 export function IssueTimeline({
   issue,
@@ -134,8 +91,11 @@ export function IssueTimeline({
       });
 
       if (topic === "done") {
-        setCurrentStatus("awaiting_review");
-        if (typeof data.summary === "string") setFixSummary(data.summary);      }
+        if (typeof data.summary === "string") setFixSummary(data.summary);
+        if (data.status === "completed" || !data.status) {
+          setCurrentStatus("awaiting_review");
+        }
+      }
     }
   }, [freshData, issue.id]);
 
@@ -148,39 +108,25 @@ export function IssueTimeline({
   }, [currentStatus, isActive, isConnected, onStatusChange]);
 
   const lastActivity = activities[activities.length - 1];
-  const lastIsLoading = lastActivity?.details.status === "started";
+  const lastIsLoading =
+    lastActivity?.details.status === "started" ||
+    lastActivity?.details.status === "streaming";
 
   return (
     <div className="flex flex-col gap-6">
       <div className="relative">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           {activities.map((activity) => {
-            const Icon = ACTIVITY_ICONS[activity.type];
+            const alreadyApproved = ["resolved", "escalated", "too_complex", "skipped"].includes(currentStatus);
             return (
-              <div key={activity.id} className="relative flex gap-4 pl-2">
-                <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background">
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium">
-                      {ACTIVITY_LABELS[activity.type]}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(activity.createdAt).toLocaleTimeString()}
-                    </span>
-                    {activity.details.status === "started" && (
-                      <Spinner className="size-3.5 text-muted-foreground" />
-                    )}
-                  </div>
-                  <ActivityDetails
-                    type={activity.type}
-                    details={activity.details}
-                    issueId={issue.id}
-                    showButton={!activities.some((a) => a.type === "comment_posted")}
-                  />
-                </div>
-              </div>
+              <ActivityDetails
+                key={activity.id}
+                type={activity.type}
+                details={activity.details}
+                issueId={issue.id}
+                alreadyApproved={alreadyApproved}
+                activity={activity}
+              />
             );
           })}
         </div>
@@ -223,20 +169,30 @@ export function IssueTimeline({
   );
 }
 
-function str(value: unknown, fallback = ""): string {
+export function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
+}
+
+export function Time({ date }: { date: Date }) {
+  return (
+    <span className="text-xs text-muted-foreground">
+      {date.toLocaleTimeString()}
+    </span>
+  );
 }
 
 function ActivityDetails({
   type,
   details,
   issueId,
-  showButton,
+  alreadyApproved,
+  activity,
 }: {
   type: IssueActivityType;
   details: Record<string, unknown>;
   issueId: string;
-  showButton: boolean;
+  alreadyApproved: boolean;
+  activity: IssueActivity;
 }) {
   const isStarted = details.status === "started";
   const isFailed = details.status === "failed";
@@ -253,113 +209,90 @@ function ActivityDetails({
         </div>
       );
     case "reasoning":
-      return (
-        <p className="text-sm text-muted-foreground">
-          {str(details.content)}
-        </p>
-      );
+      return <ReasoningDetails details={details} />;
     case "repo_clone":
       return (
-        <div className="flex items-center gap-2">
-          <code className="rounded bg-muted px-2 py-1 text-xs">
-            {str(details.repository)}
-          </code>
-          {isStarted && (
-            <span className="text-xs text-muted-foreground">Cloning...</span>
-          )}
-          {!isStarted && typeof details.path === "string" && (
-            <span className="text-xs text-muted-foreground">Cloned</span>
-          )}
+        <div className="w-full flex gap-1 text-sm justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircleIcon className="size-4 text-green-500" />
+            <p className="text-foreground">Cloned repository</p>
+            <span className="text-muted-foreground">{str(details.path)}</span>
+          </div>
+          <Time date={new Date(activity.createdAt)} />
         </div>
       );
     case "file_read":
       return (
-        <div className="flex items-center gap-2">
-          <code className="rounded bg-muted px-2 py-1 text-xs">
+        <div className="flex items-center gap-1">
+          {isStarted ? (
+            <Shimmer duration={1} className="text-xs text-muted-foreground">Reading...</Shimmer>
+          ) : <span className="text-xs text-muted-foreground">Read</span>}
+           <code className="text-muted-foreground/80 text-xs">
             {str(details.filePath)}
           </code>
-          {isStarted && (
-            <span className="text-xs text-muted-foreground">Reading...</span>
-          )}
         </div>
       );
     case "file_change":
       return (
-        <div className="flex flex-col gap-1">
-          <code className="rounded bg-muted px-2 py-1 text-xs w-fit">
-            {str(details.filePath)}
-          </code>
-          {isStarted && (
-            <span className="text-xs text-muted-foreground">Applying changes...</span>
-          )}
-          {!isStarted && typeof details.diff === "string" && (
-            <pre className="overflow-auto rounded-lg bg-muted p-3 text-xs">
-              {details.diff}
-            </pre>
-          )}
-        </div>
+        <DiffViewer isRunning={isStarted} diff={details.diff as string} filePath={details.filePath as string} />
+        
       );
     case "run_command":
       return (
-        <div className="flex flex-col gap-1">
-          <code className="rounded bg-muted px-2 py-1 text-xs w-fit">
-            $ {str(details.command)}
-          </code>
-          {isStarted && (
-            <span className="text-xs text-muted-foreground">Running...</span>
-          )}
+        <div className="rounded-lg bg-muted py-2">
+          <div className="flex items-center gap-1 px-2">
+            <span className="text-xs text-muted-foreground">Ran command: </span>
+            <span className="text-xs text-muted-foreground/80">{str(details.command)}</span>
+          </div>
+          <Separator className="my-2 bg-border/60" />
           {!isStarted && typeof details.output === "string" && (
-            <pre className="overflow-auto rounded-lg bg-muted p-3 text-xs">
-              {details.output}
-            </pre>
+            <CollapsibleOutput output={details.output} />
           )}
         </div>
       );
     case "web_search":
       return (
-        <div className="flex flex-col gap-1">
-          <code className="rounded bg-muted px-2 py-1 text-xs w-fit">
-            {str(details.query)}
-          </code>
-          {isStarted && (
-            <span className="text-xs text-muted-foreground">Searching...</span>
+        <div className="flex flex-col gap-1 bg-muted rounded p-2">
+          {isStarted ? (
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Spinner className="size-2 mr-1" />
+              <Shimmer duration={1} className="text-xs">{`Searching web... "${str(details.query)}"`}</Shimmer>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">{`Searched web for: "${str(details.query)}"`}</span>
           )}
           {!isStarted && typeof details.snippet === "string" && (
-            <p className="text-sm text-muted-foreground">{details.snippet}</p>
+            <p className="text-xs text-muted-foreground/80">{details.snippet}</p>
           )}
         </div>
       );
     case "pr_created":
-      if (isStarted) {
-        return (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              Creating pull request: {str(details.title)}
-            </span>
-          </div>
-        );
-      }
       return (
-        <div className="flex flex-col gap-1">
-          <span className="text-sm">{str(details.title)}</span>
+        <div className="rounded-lg bg-muted py-2 flex px-2 justify-between">
+          <div className="flex items-center gap-1">
+            {isStarted ? (
+              <Shimmer duration={1} className="text-xs text-muted-foreground">Creating pull request...</Shimmer>
+            ) : (
+              <span className="text-xs text-muted-foreground">Created pull request: </span>
+            )}
+            <span className="text-xs text-muted-foreground/80">{str(details.title)}</span>
+          </div>
           {typeof details.url === "string" && (
-            <a
-              href={details.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:underline w-fit"
-            >
-              #{details.number as string} — View on GitHub
-            </a>
+            <Link href={details.url} target="_blank" rel="noopener noreferrer">
+              <button className="bg-background border flex gap-1 items-center px-2 py-1 rounded-md hover:bg-muted-foreground/10 transition-colors text-xs text-muted-foreground cursor-pointer">
+                View on GitHub
+                <ArrowUpRightIcon className="size-4" />
+              </button>
+            </Link>
           )}
         </div>
-      );
+      )
     case "ci_status":
       if (isStarted) {
         return (
-          <span className="text-sm text-muted-foreground">
+          <Shimmer duration={1} className="text-sm text-muted-foreground">
             Running CI checks...
-          </span>
+          </Shimmer>
         );
       }
       return (
@@ -396,16 +329,14 @@ function ActivityDetails({
       );
     case "comment_drafted":
       return (
-        <CommentDraftedDetails
+        <DraftComment
           details={details}
           issueId={issueId}
-          showButton={showButton}
+          alreadyApproved={alreadyApproved}
         />
       );
     case "comment_posted":
-      return (
-        <span className="text-sm text-green-600">Comment posted to GitHub</span>
-      );
+      return null;
     case "error":
       return (
         <p className={`text-sm ${isFailed ? "text-red-600 font-medium" : "text-red-600"}`}>
@@ -413,11 +344,7 @@ function ActivityDetails({
         </p>
       );
     case "done":
-      return (
-        <p className="text-sm text-green-600">
-          {str(details.summary, "Completed")}
-        </p>
-      );
+      return null;
     default:
       return (
         <pre className="overflow-auto rounded-lg bg-muted p-3 text-xs">
@@ -425,55 +352,4 @@ function ActivityDetails({
         </pre>
       );
   }
-}
-
-function CommentDraftedDetails({
-  details,
-  issueId,
-  showButton,
-}: {
-  details: Record<string, unknown>;
-  issueId: string;
-  showButton: boolean;
-}) {
-  const [posted, setPosted] = useState(false);
-
-  const approveComment = api.issue.approveComment.useMutation({
-    onSuccess: () => setPosted(true),
-  });
-
-  const comment = str(details.issueComment);
-
-  return (
-    <div className="flex flex-col gap-3">
-      {comment && (
-        <div className="rounded-lg border bg-muted/50 p-3">
-          <Markdown collapsible className="text-sm">{comment}</Markdown>
-        </div>
-      )}
-      {posted ? (
-        <span className="text-sm text-green-600">Comment posted to GitHub</span>
-      ) : showButton ? (
-        <Button
-          size="sm"
-          onClick={() => approveComment.mutate({ issueId })}
-          disabled={approveComment.isPending}
-        >
-          {approveComment.isPending ? (
-            <>
-              <Spinner className="size-3.5" />
-              Posting...
-            </>
-          ) : (
-            "Approve & Post Comment"
-          )}
-        </Button>
-      ) : null}
-      {approveComment.isError && (
-        <p className="text-sm text-red-600">
-          Failed to post comment: {approveComment.error.message}
-        </p>
-      )}
-    </div>
-  );
 }

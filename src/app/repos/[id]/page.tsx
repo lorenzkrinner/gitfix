@@ -10,7 +10,7 @@ import {
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { MagnifyingGlassCircleIcon } from "@heroicons/react/24/solid";
-import { StatusBadge } from "./issues/_components/status-badge";
+import { StatusBadge } from "./issues/[issueId]/_components/status-badge";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { GithubIcon } from "~/components/icons";
 import { NavArrowLeftSolid } from "iconoir-react";

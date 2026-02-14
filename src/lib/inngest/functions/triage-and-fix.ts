@@ -24,28 +24,101 @@ async function streamReasoning(
   text: string,
   publish: PublishFn,
   step: StepTools,
+  thinkDuration = "2s",
 ): Promise<void> {
   const streamId = stepId;
   const words = text.split(" ");
+
+  await publish({
+    channel: `issue:${issueId}`,
+    topic: "reasoning",
+    data: { type: "reasoning", content: "", streamId, status: "streaming" },
+  });
+
+  // Simulate actual thinking time before streaming the result
+  await step.sleep(`think-${stepId}`, thinkDuration);
+
+  let accumulated = "";
+  let i = 0;
+  while (i < words.length) {
+    const wordCount = Math.random() < 0.7 ? 1 : 2;
+    const wordsToAdd = words.slice(i, i + wordCount);
+    
+    accumulated += (i === 0 ? "" : " ") + wordsToAdd.join(" ");
+
+    await publish({
+      channel: `issue:${issueId}`,
+      topic: "reasoning",
+      data: { type: "reasoning", content: accumulated, streamId, status: "streaming" },
+    });
+
+    i += wordCount;
+  }
+
+  const durationSeconds = Math.max(1, Math.round(parseFloat(thinkDuration)));
 
   await step.run(`db-${stepId}`, async () => {
     await db.insert(issueActivity).values({
       issueId,
       type: "reasoning",
-      details: { content: text, streamId },
+      details: { content: text, streamId, status: "completed", durationSeconds },
     });
   });
 
+  await publish({
+    channel: `issue:${issueId}`,
+    topic: "reasoning",
+    data: { type: "reasoning", content: text, streamId, status: "completed", durationSeconds },
+  });
+}
+
+async function streamFileChange(
+  issueId: string,
+  stepId: string,
+  filePath: string,
+  diff: string,
+  publish: PublishFn,
+  step: StepTools,
+): Promise<void> {
+  const streamId = stepId;
+  const lines = diff.split("\n");
+
+  await publish({
+    channel: `issue:${issueId}`,
+    topic: "file_change",
+    data: { type: "file_change", filePath, diff: "", streamId, status: "streaming" },
+  });
+
   let accumulated = "";
-  for (let i = 0; i < words.length; i++) {
-    accumulated += (i === 0 ? "" : " ") + words[i];
+  let i = 0;
+  while (i < lines.length) {
+    const lineCount = Math.random() < 0.7 ? 1 : 2;
+    const linesToAdd = lines.slice(i, i + lineCount);
+    
+    accumulated += (i === 0 ? "" : "\n") + linesToAdd.join("\n");
 
     await publish({
       channel: `issue:${issueId}`,
-      topic: "reasoning",
-      data: { type: "reasoning", content: accumulated, streamId },
+      topic: "file_change",
+      data: { type: "file_change", filePath, diff: accumulated, streamId, status: "streaming" },
     });
+
+    i += lineCount;
   }
+
+  await step.run(`db-${stepId}`, async () => {
+    await db.insert(issueActivity).values({
+      issueId,
+      type: "file_change",
+      details: { filePath, diff, streamId, status: "completed" },
+    });
+  });
+
+  await publish({
+    channel: `issue:${issueId}`,
+    topic: "file_change",
+    data: { type: "file_change", filePath, diff, streamId, status: "completed" },
+  });
 }
 
 async function emitActivity(
@@ -154,6 +227,7 @@ export const triageAndFix = inngest.createFunction(
 
     await step.sleep("pause-after-triage", "1.5s");
 
+    // Clone the repository — slower operation (4s)
     await emitToolActivity(
       issueId,
       "clone-repo",
@@ -162,7 +236,7 @@ export const triageAndFix = inngest.createFunction(
       { repository: "owner/repo", path: "/tmp/gitfix/owner-repo" },
       publish,
       step,
-      "2s",
+      "4s",
     );
 
     await step.sleep("pause-after-clone", "1s");
@@ -176,10 +250,12 @@ export const triageAndFix = inngest.createFunction(
         "understand the data flow. Let me start by reading the main component.",
       publish,
       step,
+      "4s",
     );
 
-    await step.sleep("pause-1", "1s");
+    await step.sleep("pause-1", "0.5s");
 
+    // File reads — quick (0.4s)
     await emitToolActivity(
       issueId,
       "read-dashboard",
@@ -188,10 +264,10 @@ export const triageAndFix = inngest.createFunction(
       { filePath: "src/components/Dashboard.tsx" },
       publish,
       step,
-      "1.5s",
+      "0.4s",
     );
 
-    await step.sleep("pause-2", "0.5s");
+    await step.sleep("pause-2", "0.3s");
 
     await emitToolActivity(
       issueId,
@@ -201,10 +277,10 @@ export const triageAndFix = inngest.createFunction(
       { filePath: "src/hooks/useAuth.ts" },
       publish,
       step,
-      "1.5s",
+      "0.4s",
     );
 
-    await step.sleep("pause-3", "1s");
+    await step.sleep("pause-3", "0.5s");
 
     await streamReasoning(
       issueId,
@@ -217,9 +293,10 @@ export const triageAndFix = inngest.createFunction(
         "fetchUserStats function to see if it supports cancellation.",
       publish,
       step,
+      "3s",
     );
 
-    await step.sleep("pause-4", "1.2s");
+    await step.sleep("pause-4", "0.5s");
 
     await emitToolActivity(
       issueId,
@@ -229,10 +306,10 @@ export const triageAndFix = inngest.createFunction(
       { filePath: "src/lib/api/client.ts" },
       publish,
       step,
-      "1s",
+      "0.3s",
     );
 
-    await step.sleep("pause-5", "0.5s");
+    await step.sleep("pause-5", "0.3s");
 
     await emitToolActivity(
       issueId,
@@ -242,11 +319,12 @@ export const triageAndFix = inngest.createFunction(
       { filePath: "src/lib/api/stats.ts" },
       publish,
       step,
-      "1s",
+      "0.3s",
     );
 
-    await step.sleep("pause-6", "1s");
+    await step.sleep("pause-6", "0.5s");
 
+    // Web search — slower (3.5s)
     await emitToolActivity(
       issueId,
       "web-search-1",
@@ -262,10 +340,10 @@ export const triageAndFix = inngest.createFunction(
       },
       publish,
       step,
-      "2s",
+      "3.5s",
     );
 
-    await step.sleep("pause-7", "1s");
+    await step.sleep("pause-7", "0.5s");
 
     await streamReasoning(
       issueId,
@@ -278,6 +356,7 @@ export const triageAndFix = inngest.createFunction(
         "parameter, so I just need to wire it up. Let me apply the fix.",
       publish,
       step,
+      "2s",
     );
 
     await step.sleep("pause-8", "1s");
@@ -307,19 +386,18 @@ export const triageAndFix = inngest.createFunction(
 +    return () => controller.abort();
 +  }, [userId]);`;
 
-    await emitToolActivity(
+    await streamFileChange(
       issueId,
       "change-dashboard",
-      "file_change",
-      { filePath: "src/components/Dashboard.tsx" },
-      { filePath: "src/components/Dashboard.tsx", diff: dashboardDiff },
+      "src/components/Dashboard.tsx",
+      dashboardDiff,
       publish,
       step,
-      "2s",
     );
 
-    await step.sleep("pause-9", "1s");
+    await step.sleep("pause-9", "0.5s");
 
+    // Typecheck — moderate (3s)
     await emitToolActivity(
       issueId,
       "run-typecheck-1",
@@ -336,10 +414,10 @@ export const triageAndFix = inngest.createFunction(
       },
       publish,
       step,
-      "2s",
+      "3s",
     );
 
-    await step.sleep("pause-10", "1s");
+    await step.sleep("pause-10", "0.5s");
 
     await emitActivity(
       issueId,
@@ -355,7 +433,7 @@ export const triageAndFix = inngest.createFunction(
       step,
     );
 
-    await step.sleep("pause-11", "1s");
+    await step.sleep("pause-11", "0.5s");
 
     await streamReasoning(
       issueId,
@@ -366,6 +444,7 @@ export const triageAndFix = inngest.createFunction(
         "containing the AbortSignal, and pass it through to the underlying fetch call.",
       publish,
       step,
+      "2s",
     );
 
     await step.sleep("pause-12", "1s");
@@ -385,19 +464,18 @@ export const triageAndFix = inngest.createFunction(
    return response.data as UserStats;
  }`;
 
-    await emitToolActivity(
+    await streamFileChange(
       issueId,
       "change-stats",
-      "file_change",
-      { filePath: "src/lib/api/stats.ts" },
-      { filePath: "src/lib/api/stats.ts", diff: statsDiff },
+      "src/lib/api/stats.ts",
+      statsDiff,
       publish,
       step,
-      "2s",
     );
 
-    await step.sleep("pause-13", "1s");
+    await step.sleep("pause-13", "0.5s");
 
+    // Typecheck — moderate (3s)
     await emitToolActivity(
       issueId,
       "run-typecheck-2",
@@ -410,11 +488,12 @@ export const triageAndFix = inngest.createFunction(
       },
       publish,
       step,
-      "2s",
+      "3s",
     );
 
-    await step.sleep("pause-14", "1s");
+    await step.sleep("pause-14", "0.5s");
 
+    // Test suite — longer (4s)
     await emitToolActivity(
       issueId,
       "run-tests",
@@ -443,10 +522,10 @@ export const triageAndFix = inngest.createFunction(
       },
       publish,
       step,
-      "2.5s",
+      "4s",
     );
 
-    await step.sleep("pause-15", "1s");
+    await step.sleep("pause-15", "0.5s");
 
     await streamReasoning(
       issueId,
@@ -457,9 +536,13 @@ export const triageAndFix = inngest.createFunction(
         "cancelled when the user changes). The changes are minimal and backwards-compatible.",
       publish,
       step,
+      "3s",
     );
 
     await step.sleep("pause-16", "0.5s");
+
+    // Create PR — moderate (2.5s)
+    const prUrl = "https://github.com/owner/repo/pull/42";
 
     await emitToolActivity(
       issueId,
@@ -468,16 +551,17 @@ export const triageAndFix = inngest.createFunction(
       { title: "fix: resolve stale closure race condition in Dashboard" },
       {
         title: "fix: resolve stale closure race condition in Dashboard",
-        url: "https://github.com/owner/repo/pull/42",
+        url: prUrl,
         number: 42,
       },
       publish,
       step,
-      "2s",
+      "2.5s",
     );
 
-    await step.sleep("pause-17", "1.5s");
+    await step.sleep("pause-17", "1s");
 
+    // CI checks — longer (5s)
     await emitToolActivity(
       issueId,
       "ci-check",
@@ -486,10 +570,10 @@ export const triageAndFix = inngest.createFunction(
       { prNumber: 42, status: "passed", checks: 3, passed: 3, failed: 0 },
       publish,
       step,
-      "3s",
+      "5s",
     );
 
-    await step.sleep("pause-18", "1s");
+    await step.sleep("pause-18", "0.5s");
 
     const fixSummary =
       "Fixed the stale closure and race condition in the Dashboard component. " +
@@ -516,14 +600,43 @@ export const triageAndFix = inngest.createFunction(
 
 **Tests:** All 7 tests passing, including new tests for abort behavior and account switching.`;
 
+    // Include prUrl in comment_drafted details so the UI can link to the PR
     await emitActivity(
       issueId,
       "comment-drafted",
       "comment_drafted",
-      { issueComment },
+      { issueComment, prUrl },
       publish,
       step,
     );
+
+    // Stream the summary word-by-word before finalizing
+    const summaryStreamId = "done-summary";
+    const summaryWords = fixSummary.split(" ");
+
+    await publish({
+      channel: ch,
+      topic: "done",
+      data: { type: "done", summary: "", streamId: summaryStreamId, status: "streaming" },
+    });
+
+    let accumulatedSummary = "";
+    let i = 0;
+    while (i < summaryWords.length) {
+      // Randomly decide to emit 1 or 2 words (60% chance of 1 word, 40% chance of 2)
+      const wordCount = Math.random() < 0.6 ? 1 : 2;
+      const wordsToAdd = summaryWords.slice(i, i + wordCount);
+      
+      accumulatedSummary += (i === 0 ? "" : " ") + wordsToAdd.join(" ");
+
+      await publish({
+        channel: ch,
+        topic: "done",
+        data: { type: "done", summary: accumulatedSummary, streamId: summaryStreamId, status: "streaming" },
+      });
+
+      i += wordCount;
+    }
 
     await step.run("finalize-issue", async () => {
       await db
@@ -545,7 +658,7 @@ export const triageAndFix = inngest.createFunction(
     await publish({
       channel: ch,
       topic: "done",
-      data: { type: "done", summary: fixSummary },
+      data: { type: "done", summary: fixSummary, streamId: summaryStreamId, status: "completed" },
     });
 
     return { status: "awaiting_review" };

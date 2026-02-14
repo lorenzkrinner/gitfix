@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { IssueInfo } from "../_components/issue-info";
-import { IssueTimeline } from "../_components/issue-timeline";
+import { IssueInfo } from "./_components/issue-info";
+import { IssueTimeline } from "./_components/issue-timeline";
 import type { IssueStatus } from "~/lib/types/issue";
 import type { IssueActivity } from "~/server/db/tables";
 import type { Issue } from "~/server/db/tables/issue";

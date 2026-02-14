@@ -72,6 +72,30 @@ export const issueRouter = createTRPCRouter({
       return issue;
     }),
 
+  approve: protectedProcedure
+    .input(z.object({ issueId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const issue = await ctx.db.query.issues.findFirst({
+        where: eq(issues.id, input.issueId),
+        with: { repository: true },
+      });
+
+      if (!issue) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Issue not found" });
+      }
+
+      if (issue.repository.organizationId !== ctx.orgId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Issue not found" });
+      }
+
+      await ctx.db
+        .update(issues)
+        .set({ status: "resolved" as IssueStatus })
+        .where(eq(issues.id, input.issueId));
+
+      return { success: true };
+    }),
+
   approveComment: protectedProcedure
     .input(z.object({ issueId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
