@@ -18,106 +18,63 @@ type StepTools = {
   sleep: (id: string, duration: string) => Promise<unknown>;
 };
 
-async function streamReasoning(
+async function streamText(
   issueId: string,
   stepId: string,
-  text: string,
+  topic: IssueActivityType,
+  content: string,
   publish: PublishFn,
   step: StepTools,
-  thinkDuration = "2s",
+  extras: Record<string, unknown> = {},
+  thinkDuration?: string,
 ): Promise<void> {
   const streamId = stepId;
-  const words = text.split(" ");
+  const splitByLines = topic === "file_change";
+  const chunks = splitByLines ? content.split("\n") : content.split(" ");
+  const contentKey = splitByLines ? "diff" : "content";
 
   await publish({
     channel: `issue:${issueId}`,
-    topic: "reasoning",
-    data: { type: "reasoning", content: "", streamId, status: "streaming" },
+    topic,
+    data: { type: topic, [contentKey]: "", streamId, status: "started", ...extras },
   });
 
-  // Simulate actual thinking time before streaming the result
-  await step.sleep(`think-${stepId}`, thinkDuration);
-
-  let accumulated = "";
-  let i = 0;
-  while (i < words.length) {
-    const wordCount = Math.random() < 0.7 ? 1 : 2;
-    const wordsToAdd = words.slice(i, i + wordCount);
-    
-    accumulated += (i === 0 ? "" : " ") + wordsToAdd.join(" ");
-
-    await publish({
-      channel: `issue:${issueId}`,
-      topic: "reasoning",
-      data: { type: "reasoning", content: accumulated, streamId, status: "streaming" },
-    });
-
-    i += wordCount;
+  if (thinkDuration) {
+    await step.sleep(`think-${stepId}`, thinkDuration);
   }
 
-  const durationSeconds = Math.max(1, Math.round(parseFloat(thinkDuration)));
-
-  await step.run(`db-${stepId}`, async () => {
-    await db.insert(issueActivity).values({
-      issueId,
-      type: "reasoning",
-      details: { content: text, streamId, status: "completed", durationSeconds },
-    });
-  });
-
-  await publish({
-    channel: `issue:${issueId}`,
-    topic: "reasoning",
-    data: { type: "reasoning", content: text, streamId, status: "completed", durationSeconds },
-  });
-}
-
-async function streamFileChange(
-  issueId: string,
-  stepId: string,
-  filePath: string,
-  diff: string,
-  publish: PublishFn,
-  step: StepTools,
-): Promise<void> {
-  const streamId = stepId;
-  const lines = diff.split("\n");
-
-  await publish({
-    channel: `issue:${issueId}`,
-    topic: "file_change",
-    data: { type: "file_change", filePath, diff: "", streamId, status: "streaming" },
-  });
-
   let accumulated = "";
   let i = 0;
-  while (i < lines.length) {
-    const lineCount = Math.random() < 0.7 ? 1 : 2;
-    const linesToAdd = lines.slice(i, i + lineCount);
-    
-    accumulated += (i === 0 ? "" : "\n") + linesToAdd.join("\n");
+  while (i < chunks.length) {
+    const separator = splitByLines ? "\n" : " ";
+    accumulated += (i === 0 ? "" : separator) + chunks[i];
 
     await publish({
       channel: `issue:${issueId}`,
-      topic: "file_change",
-      data: { type: "file_change", filePath, diff: accumulated, streamId, status: "streaming" },
+      topic,
+      data: { type: topic, [contentKey]: accumulated, streamId, status: "started", ...extras },
     });
 
-    i += lineCount;
+    i++;
+  }
+
+  const completedExtras: Record<string, unknown> = { ...extras };
+  if (thinkDuration) {
+    completedExtras.durationSeconds = Math.max(1, Math.round(parseFloat(thinkDuration)));
   }
 
   await step.run(`db-${stepId}`, async () => {
     await db.insert(issueActivity).values({
       issueId,
-      type: "file_change",
-      details: { filePath, diff, streamId, status: "completed" },
+      type: topic,
+      details: { [contentKey]: content, streamId, status: "completed", ...completedExtras },
     });
   });
 
   await publish({
     channel: `issue:${issueId}`,
-    topic: "file_change",
-    data: { type: "file_change", filePath, diff, streamId, status: "completed" },
+    topic,
+    data: { type: topic, [contentKey]: content, streamId, status: "completed", ...completedExtras },
   });
 }
 
@@ -128,7 +85,18 @@ async function emitActivity(
   details: Record<string, unknown>,
   publish: PublishFn,
   step: StepTools,
+  sleepDuration?: string,
 ): Promise<void> {
+  if (sleepDuration) {
+    await publish({
+      channel: `issue:${issueId}`,
+      topic,
+      data: { type: topic, stepId, status: "started", ...details },
+    });
+
+    await step.sleep(`sleep-${stepId}`, sleepDuration);
+  }
+
   await step.run(`db-${stepId}`, async () => {
     await db
       .insert(issueActivity)
@@ -180,6 +148,12 @@ export const triageAndFix = inngest.createFunction(
     const { issueId } = event.data as { issueId: string };
     const ch = `issue:${issueId}`;
 
+    await publish({
+      channel: ch,
+      topic: "triage",
+      data: { type: "triage", status: "started" },
+    });
+
     const triageResult = await step.run("triage", async () => {
       const issue = await db.query.issues.findFirst({
         where: eq(issues.id, issueId),
@@ -225,7 +199,7 @@ export const triageAndFix = inngest.createFunction(
       return { status: triageResult.classification };
     }
 
-    await step.sleep("pause-after-triage", "1.5s");
+    await step.sleep("pause-after-triage", "0.5s");
 
     // Clone the repository — slower operation (4s)
     await emitToolActivity(
@@ -233,7 +207,7 @@ export const triageAndFix = inngest.createFunction(
       "clone-repo",
       "repo_clone",
       { repository: "owner/repo" },
-      { repository: "owner/repo", path: "/tmp/gitfix/owner-repo" },
+      { repository: "owner/repo", path: "/tmp/lorenzkrinner/gitfix-issues" },
       publish,
       step,
       "4s",
@@ -241,16 +215,24 @@ export const triageAndFix = inngest.createFunction(
 
     await step.sleep("pause-after-clone", "1s");
 
-    await streamReasoning(
+    await streamText(
       issueId,
       "reasoning-initial",
+      "reasoning",
       "The issue describes a race condition where the dashboard displays stale user data " +
         "after switching accounts. The console output shows the useEffect closure captures " +
         "an old userId. I need to examine the Dashboard component and the useAuth hook to " +
-        "understand the data flow. Let me start by reading the main component.",
+        "understand the data flow. The reproduction steps mention that switching between " +
+        "two accounts rapidly causes the old account's stats to flash briefly before being " +
+        "replaced. This is a classic symptom of an uncontrolled async operation inside a " +
+        "React effect — the fetch for the previous user resolves after the fetch for the " +
+        "new user and overwrites the state. I should also check whether the API client " +
+        "supports request cancellation via AbortSignal, because that will determine " +
+        "the shape of the fix. Let me start by reading the main component.",
       publish,
       step,
-      "4s",
+      {},
+      "0.5s",
     );
 
     await step.sleep("pause-1", "0.5s");
@@ -282,18 +264,27 @@ export const triageAndFix = inngest.createFunction(
 
     await step.sleep("pause-3", "0.5s");
 
-    await streamReasoning(
+    await streamText(
       issueId,
       "reasoning-analysis",
-      "I can see the problem now. In Dashboard.tsx the useEffect calls " +
+      "reasoning",
+      "I can see the problem now. In Dashboard.tsx the useEffect on line 27 calls " +
         "fetchUserStats(userId) but the dependency array only includes [session]. " +
         "When the account switches, session updates first but the userId inside the " +
         "closure is stale from the previous render. There's also no AbortController " +
-        "to cancel in-flight requests when the user changes. I need to check the " +
-        "fetchUserStats function to see if it supports cancellation.",
+        "to cancel in-flight requests when the user changes. Looking at the " +
+        "component lifecycle: session changes trigger a re-render, the new render " +
+        "produces a new userId, but the old effect closure still holds the previous " +
+        "userId. The effect doesn't re-run because its dependency is session (an " +
+        "object reference that may or may not have changed by this point). Meanwhile " +
+        "the in-flight request for the old userId can resolve at any time — if it " +
+        "resolves after a newer request, it silently overwrites the correct data. " +
+        "I need to check the fetchUserStats function to see if it already supports " +
+        "cancellation via an AbortSignal parameter.",
       publish,
       step,
-      "3s",
+      {},
+      "1s",
     );
 
     await step.sleep("pause-4", "0.5s");
@@ -324,42 +315,56 @@ export const triageAndFix = inngest.createFunction(
 
     await step.sleep("pause-6", "0.5s");
 
-    // Web search — slower (3.5s)
-    await emitToolActivity(
+    // Web search — streamed results
+    const webSearchResults =
+      "### React useEffect cleanup patterns\n\n" +
+      "When dealing with async operations in `useEffect`, always return a cleanup " +
+      "function that aborts pending requests. Use an `AbortController` and pass its " +
+      "signal to `fetch()`. Include all reactive values in the dependency array to " +
+      "avoid stale closures.\n\n" +
+      "**Key takeaways:**\n" +
+      "- Create an `AbortController` at the start of each effect invocation\n" +
+      "- Pass `controller.signal` to every async call (fetch, axios, etc.)\n" +
+      "- Return `() => controller.abort()` as the cleanup function\n" +
+      "- Include all values read inside the effect in the dependency array\n\n" +
+      "*Source: [react.dev/reference/react/useEffect](https://react.dev/reference/react/useEffect)*";
+
+    await streamText(
       issueId,
       "web-search-1",
       "web_search",
-      { query: "React useEffect stale closure race condition AbortController cleanup" },
-      {
-        query: "React useEffect stale closure race condition AbortController cleanup",
-        snippet:
-          "When dealing with async operations in useEffect, always return a cleanup " +
-          "function that aborts pending requests. Use an AbortController and pass its " +
-          "signal to fetch(). Include all reactive values in the dependency array to " +
-          "avoid stale closures. — react.dev/reference/react/useEffect",
-      },
+      webSearchResults,
       publish,
       step,
-      "3.5s",
+      { query: "React useEffect stale closure race condition AbortController cleanup" },
+      "2s",
     );
 
     await step.sleep("pause-7", "0.5s");
 
-    await streamReasoning(
+    await streamText(
       issueId,
       "reasoning-plan",
-      "Based on the code and the React docs, the fix requires two changes: " +
+      "reasoning",
+      "Based on the code and the React docs, the fix requires two changes. " +
         "First, add userId to the useEffect dependency array so the effect re-runs " +
-        "when the user changes. Second, add an AbortController cleanup that cancels " +
-        "stale requests when userId changes or the component unmounts. The " +
-        "fetchUserStats function in stats.ts already accepts an optional signal " +
-        "parameter, so I just need to wire it up. Let me apply the fix.",
+        "when the user changes — this eliminates the stale closure entirely because " +
+        "each effect invocation will capture the current userId. Second, add an " +
+        "AbortController cleanup function that cancels in-flight requests whenever " +
+        "userId changes or the component unmounts. This prevents the race condition " +
+        "where an old response overwrites fresh data. The fetchUserStats function in " +
+        "stats.ts already accepts an optional signal parameter, so I just need to " +
+        "create the controller in the effect, pass controller.signal to the fetch, " +
+        "and return a cleanup that calls controller.abort(). I'll also add a " +
+        "loading state so the UI doesn't flash stale data during the transition " +
+        "between users. Let me apply the fix now.",
       publish,
       step,
-      "2s",
+      {},
+      "0.5s",
     );
 
-    await step.sleep("pause-8", "1s");
+    await step.sleep("pause-8", "0.5s");
 
     const dashboardDiff = `@@ -23,14 +23,22 @@ export function Dashboard() {
    const { userId, session } = useAuth();
@@ -386,13 +391,14 @@ export const triageAndFix = inngest.createFunction(
 +    return () => controller.abort();
 +  }, [userId]);`;
 
-    await streamFileChange(
+    await streamText(
       issueId,
       "change-dashboard",
-      "src/components/Dashboard.tsx",
+      "file_change",
       dashboardDiff,
       publish,
       step,
+      { filePath: "src/components/Dashboard.tsx" },
     );
 
     await step.sleep("pause-9", "0.5s");
@@ -419,35 +425,41 @@ export const triageAndFix = inngest.createFunction(
 
     await step.sleep("pause-10", "0.5s");
 
-    await emitActivity(
+    await streamText(
       issueId,
       "error-typecheck",
-      "error",
-      {
-        message:
-          "TypeScript error: fetchUserStats() does not accept a second argument yet. " +
-          "I need to update the function signature in stats.ts to accept an options " +
-          "object with an AbortSignal.",
-      },
+      "text_generated",
+      "TypeScript error: fetchUserStats() does not accept a second argument yet. " +
+      "I need to update the function signature in stats.ts to accept an options " +
+      "object with an AbortSignal.",
       publish,
       step,
+      {},
     );
 
     await step.sleep("pause-11", "0.5s");
 
-    await streamReasoning(
+    await streamText(
       issueId,
       "reasoning-error-recovery",
-      "The typecheck failed because fetchUserStats only accepts a userId parameter. " +
-        "I assumed it already supported a signal option but it doesn't. I need to update " +
-        "the function in src/lib/api/stats.ts to accept an optional options object " +
-        "containing the AbortSignal, and pass it through to the underlying fetch call.",
+      "reasoning",
+      "The typecheck failed because fetchUserStats only accepts a single userId " +
+        "parameter — I incorrectly assumed it already had a signal option. Looking " +
+        "at the error on line 38 of Dashboard.tsx, TypeScript reports 'Expected 1 " +
+        "arguments, but got 2' for the call fetchUserStats(userId, { signal: " +
+        "controller.signal }). I need to update the function signature in " +
+        "src/lib/api/stats.ts to accept an optional second parameter — an options " +
+        "object with an AbortSignal field. Then I need to forward that signal to " +
+        "the underlying apiClient.get() call. The apiClient is built on fetch, so " +
+        "it should already support passing a signal in the request config. Let me " +
+        "verify the apiClient interface and make the change.",
       publish,
       step,
+      {},
       "2s",
     );
 
-    await step.sleep("pause-12", "1s");
+    await step.sleep("pause-12", "0.5s");
 
     const statsDiff = `@@ -5,8 +5,12 @@ import { apiClient } from "./client";
 
@@ -464,13 +476,14 @@ export const triageAndFix = inngest.createFunction(
    return response.data as UserStats;
  }`;
 
-    await streamFileChange(
+    await streamText(
       issueId,
       "change-stats",
-      "src/lib/api/stats.ts",
+      "file_change",
       statsDiff,
       publish,
       step,
+      { filePath: "src/lib/api/stats.ts" },
     );
 
     await step.sleep("pause-13", "0.5s");
@@ -527,15 +540,24 @@ export const triageAndFix = inngest.createFunction(
 
     await step.sleep("pause-15", "0.5s");
 
-    await streamReasoning(
+    await streamText(
       issueId,
       "reasoning-final",
+      "reasoning",
       "All type checks and tests pass. The fix addresses both root causes: the stale " +
-        "closure (by adding userId to the dependency array instead of session) and the " +
-        "race condition (by adding AbortController cleanup so in-flight requests are " +
-        "cancelled when the user changes). The changes are minimal and backwards-compatible.",
+        "closure (by changing the dependency array from [session] to [userId] so the " +
+        "effect always captures the current user) and the race condition (by creating " +
+        "an AbortController in the effect and returning a cleanup function that calls " +
+        "controller.abort(), which cancels any in-flight request when the userId " +
+        "changes or the component unmounts). The stats.ts change is additive — the " +
+        "new options parameter is optional, so all existing call sites continue to " +
+        "work without modification. The loading state prevents the brief flash of " +
+        "stale data that the reporter described. All 7 tests pass including the new " +
+        "ones that verify abort behavior and account switching. The changes are " +
+        "minimal, backwards-compatible, and directly address the reported symptoms.",
       publish,
       step,
+      {},
       "3s",
     );
 
@@ -600,43 +622,27 @@ export const triageAndFix = inngest.createFunction(
 
 **Tests:** All 7 tests passing, including new tests for abort behavior and account switching.`;
 
-    // Include prUrl in comment_drafted details so the UI can link to the PR
     await emitActivity(
       issueId,
       "comment-drafted",
       "comment_drafted",
-      { issueComment, prUrl },
+      { content: issueComment, prUrl },
       publish,
       step,
+      "5s",
     );
 
-    // Stream the summary word-by-word before finalizing
-    const summaryStreamId = "done-summary";
-    const summaryWords = fixSummary.split(" ");
+    await step.sleep("pause-19", "0.5s");
 
-    await publish({
-      channel: ch,
-      topic: "done",
-      data: { type: "done", summary: "", streamId: summaryStreamId, status: "streaming" },
-    });
-
-    let accumulatedSummary = "";
-    let i = 0;
-    while (i < summaryWords.length) {
-      // Randomly decide to emit 1 or 2 words (60% chance of 1 word, 40% chance of 2)
-      const wordCount = Math.random() < 0.6 ? 1 : 2;
-      const wordsToAdd = summaryWords.slice(i, i + wordCount);
-      
-      accumulatedSummary += (i === 0 ? "" : " ") + wordsToAdd.join(" ");
-
-      await publish({
-        channel: ch,
-        topic: "done",
-        data: { type: "done", summary: accumulatedSummary, streamId: summaryStreamId, status: "streaming" },
-      });
-
-      i += wordCount;
-    }
+    await emitActivity(
+      issueId,
+      "fix-summary",
+      "fix_summary",
+      { content: fixSummary },
+      publish,
+      step,
+      "4s",
+    );
 
     await step.run("finalize-issue", async () => {
       await db
@@ -647,19 +653,9 @@ export const triageAndFix = inngest.createFunction(
           issueComment,
         })
         .where(eq(issues.id, issueId));
-
-      await db.insert(issueActivity).values({
-        issueId,
-        type: "done",
-        details: { summary: fixSummary },
-      });
     });
 
-    await publish({
-      channel: ch,
-      topic: "done",
-      data: { type: "done", summary: fixSummary, streamId: summaryStreamId, status: "completed" },
-    });
+    await emitActivity(issueId, "done", "done", { summary: fixSummary }, publish, step);
 
     return { status: "awaiting_review" };
   },

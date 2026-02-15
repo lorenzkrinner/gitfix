@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Separator } from "~/components/ui/separator";
 import { getIcon } from 'material-file-icons';
+import { Spinner } from "~/components/ui/spinner";
+import { Shimmer } from "~/components/ai-elements/shimmer";
+import { Time } from "../issue-timeline";
 
 const DIFF_COLLAPSED_HEIGHT = 80;
+const DIFF_STREAMING_HEIGHT = 120;
 
 function parseDiffLines(diff: string): { text: string; type: "add" | "remove" | "header" | "context" }[] {
   return diff.split("\n").map((line) => {
@@ -23,7 +27,7 @@ export function FileIcon({ filePath }: { filePath: string }) {
   );
 }
 
-export default function DiffViewer({ isRunning, diff, filePath }: { isRunning: boolean, diff: string, filePath: string }) {
+export default function DiffViewer({ isStreaming, diff, filePath, createdAt }: { isStreaming: boolean, diff: string, filePath: string, createdAt: Date }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -34,26 +38,48 @@ export default function DiffViewer({ isRunning, diff, filePath }: { isRunning: b
 
   useEffect(() => {
     if (!contentRef.current) return;
-    setOverflows(contentRef.current.scrollHeight > DIFF_COLLAPSED_HEIGHT);
-  }, [diff]);
+
+    if (isStreaming) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    } else {
+      setOverflows(contentRef.current.scrollHeight > DIFF_COLLAPSED_HEIGHT);
+    }
+  }, [diff, isStreaming]);
 
   return (
     <div className="rounded-lg bg-muted py-2">
-      <div className="flex items-center gap-1 px-2">
-        <div className="size-4 shrink-0 mr-1">
-          <FileIcon filePath={filePath} />
+      <div className="w-full flex justify-between items-center px-2">
+        <div className="flex items-center gap-1">
+          {isStreaming && (
+            <div className="flex items-center gap-1 mr-2">
+              <Spinner className="size-2 mr-1" />
+              <Shimmer duration={1} className="text-xs">Editing...</Shimmer>
+            </div>
+          )}
+          <div className="size-4 shrink-0 mr-1 mb-0.5">
+            <FileIcon filePath={filePath} />
+          </div>
+          <span className="text-xs text-foreground">{filePath}</span>
+          {additions > 0 && <span className="text-xs text-green-600">+{additions}</span>}
+          {deletions > 0 && <span className="text-xs text-red-600">-{deletions}</span>}
         </div>
-        <span className="text-xs text-foreground">{filePath}</span>
-        {additions > 0 && <span className="text-xs text-green-600">+{additions}</span>}
-        {deletions > 0 && <span className="text-xs text-red-600">-{deletions}</span>}
+        <Time date={createdAt} />
       </div>
       <Separator className="my-2 bg-border/60" />
       <div
         ref={contentRef}
-        className="relative overflow-hidden bg-transparent transition-[max-height] duration-200"
-        style={!expanded ? { maxHeight: DIFF_COLLAPSED_HEIGHT } : undefined}
+        className={`relative bg-transparent transition-[max-height] duration-200 ${
+          isStreaming ? "overflow-y-auto hide-scrollbar" : "overflow-hidden"
+        }`}
+        style={
+          isStreaming
+            ? { maxHeight: DIFF_STREAMING_HEIGHT }
+            : !expanded
+              ? { maxHeight: DIFF_COLLAPSED_HEIGHT }
+              : undefined
+        }
       >
-        <pre className="p-3 text-xs leading-5 font-mono overflow-auto">
+        <pre className="px-3 pt-1 pb-2 text-xs leading-5 font-mono overflow-x-auto">
           {lines
             .filter((line) => line.type !== "header")
             .map((line, i) => (
@@ -71,11 +97,11 @@ export default function DiffViewer({ isRunning, diff, filePath }: { isRunning: b
               </div>
             ))}
         </pre>
-        {!expanded && overflows && (
+        {!isStreaming && !expanded && overflows && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-muted to-transparent" />
         )}
       </div>
-      {overflows && (
+      {!isStreaming && overflows && (
         <button
           type="button"
           onClick={() => setExpanded((prev) => !prev)}

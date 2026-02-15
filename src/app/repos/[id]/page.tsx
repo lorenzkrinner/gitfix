@@ -79,7 +79,7 @@ export default async function RepoPage({
           <div className="flex flex-col gap-2">
             {repoIssues.map((issue) => (
               <Link key={issue.id} href={`/repos/${id}/issues/${issue.id}`}>
-                <Card className="transition-shadow hover:shadow-md border-none">
+                <Card className="transition-shadow hover:shadow-md bg-muted border-none">
                   <CardContent className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-sm text-muted-foreground font-mono">

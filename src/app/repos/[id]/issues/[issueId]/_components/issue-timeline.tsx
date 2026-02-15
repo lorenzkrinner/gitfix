@@ -9,7 +9,6 @@ import {
   useInngestSubscription,
   InngestSubscriptionState,
 } from "@inngest/realtime/hooks";
-import { CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { refreshRealtimeToken } from "~/server/actions/realtime";
 import type { IssueStatus } from "~/lib/types/issue";
 import type { IssueActivityType } from "~/lib/types/issue";
@@ -19,10 +18,13 @@ import { Shimmer } from "~/components/ai-elements/shimmer";
 import ReasoningDetails from "./activity/reasoning-details";
 import DiffViewer from "./activity/diff-viewer";
 import CollapsibleOutput from "./activity/collabsible-output";
+import WebSearchDetails from "./activity/web-search-details";
+import { FixSummary } from "./activity/fix-summary";
 import { DraftComment } from "./activity/draft-comment";
-import { Spinner } from "~/components/ui/spinner";
 import { Separator } from "~/components/ui/separator";
 import Link from "next/link";
+import { cn } from "~/lib/utils";
+import Loader from "~/components/ui/loader";
 
 const ACTIVE_STATUSES: IssueStatus[] = ["analyzing", "fixing"];
 
@@ -37,7 +39,6 @@ export function IssueTimeline({
 }) {
   const [activities, setActivities] = useState<IssueActivity[]>(initialActivity);
   const [currentStatus, setCurrentStatus] = useState<IssueStatus>(issue.status);
-  const [fixSummary, setFixSummary] = useState(issue.fixSummary);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -91,10 +92,7 @@ export function IssueTimeline({
       });
 
       if (topic === "done") {
-        if (typeof data.summary === "string") setFixSummary(data.summary);
-        if (data.status === "completed" || !data.status) {
-          setCurrentStatus("awaiting_review");
-        }
+        setCurrentStatus("awaiting_review");
       }
     }
   }, [freshData, issue.id]);
@@ -108,12 +106,10 @@ export function IssueTimeline({
   }, [currentStatus, isActive, isConnected, onStatusChange]);
 
   const lastActivity = activities[activities.length - 1];
-  const lastIsLoading =
-    lastActivity?.details.status === "started" ||
-    lastActivity?.details.status === "streaming";
+  const lastIsLoading = lastActivity?.details.status === "started";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pb-10">
       <div className="relative">
         <div className="flex flex-col gap-3">
           {activities.map((activity) => {
@@ -133,9 +129,7 @@ export function IssueTimeline({
 
         {isActive && !lastIsLoading && (
           <div className="relative flex gap-4 pl-2 mt-4">
-            <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background">
-              <div className="h-3 w-3 rounded-full bg-blue-500 animate-pulse" />
-            </div>
+            <Loader />
             <div className="flex items-center">
               <span className="text-sm text-muted-foreground">
                 {currentStatus === "analyzing"
@@ -148,17 +142,6 @@ export function IssueTimeline({
 
         <div ref={bottomRef} />
       </div>
-
-      {fixSummary && !isActive && (
-        <div className="flex flex-col gap-0 border-t py-12 mt-6">
-          <CardHeader>
-            <CardTitle className="text-lg">Fix Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm">{fixSummary}</p>
-          </CardContent>
-        </div>
-      )}
 
       {activities.length === 0 && !isActive && (
         <p className="text-sm text-muted-foreground text-center py-8">
@@ -173,9 +156,9 @@ export function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-export function Time({ date }: { date: Date }) {
+export function Time({ date, className }: { date: Date, className?: string }) {
   return (
-    <span className="text-xs text-muted-foreground">
+    <span className={cn("text-2xs text-muted-foreground/80", className)}>
       {date.toLocaleTimeString()}
     </span>
   );
@@ -195,10 +178,14 @@ function ActivityDetails({
   activity: IssueActivity;
 }) {
   const isStarted = details.status === "started";
-  const isFailed = details.status === "failed";
 
   switch (type) {
     case "triage":
+      if (isStarted) {
+        return (
+          <Shimmer duration={1} className="text-sm">Triaging issue...</Shimmer>
+        );
+      }
       return (
         <div className="rounded-lg bg-muted p-3 text-sm">
           <span className="font-medium">Classification:</span>{" "}
@@ -209,88 +196,110 @@ function ActivityDetails({
         </div>
       );
     case "reasoning":
-      return <ReasoningDetails details={details} />;
+      return <ReasoningDetails details={details} createdAt={new Date(activity.createdAt)} />;
     case "repo_clone":
       return (
         <div className="w-full flex gap-1 text-sm justify-between">
           <div className="flex items-center gap-2">
             <CheckCircleIcon className="size-4 text-green-500" />
-            <p className="text-foreground">Cloned repository</p>
-            <span className="text-muted-foreground">{str(details.path)}</span>
+            {isStarted ? (
+              <Shimmer duration={1} className="text-xs">Cloning repository...</Shimmer>
+            ) : (
+              <span className="text-xs text-muted-foreground">Cloned repository</span>
+            )}
+            <span className="text-muted-foreground text-xs">{str(details.path)}</span>
           </div>
-          <Time date={new Date(activity.createdAt)} />
+          <Time date={new Date(activity.createdAt)} className="mr-2" />
         </div>
       );
     case "file_read":
       return (
-        <div className="flex items-center gap-1">
-          {isStarted ? (
-            <Shimmer duration={1} className="text-xs text-muted-foreground">Reading...</Shimmer>
-          ) : <span className="text-xs text-muted-foreground">Read</span>}
-           <code className="text-muted-foreground/80 text-xs">
-            {str(details.filePath)}
-          </code>
+        <div className="w-full flex justify-between items-center">
+          <div className="flex items-center gap-1">
+            {isStarted ? (
+              <Shimmer duration={1} className="text-xs">Reading...</Shimmer>
+            ) : <span className="text-xs text-muted-foreground">Read</span>}
+             <code className="text-muted-foreground/80 text-xs">
+              {str(details.filePath)}
+            </code>
+          </div>
+          <Time date={new Date(activity.createdAt)} className="mr-2" />
         </div>
       );
     case "file_change":
       return (
-        <DiffViewer isRunning={isStarted} diff={details.diff as string} filePath={details.filePath as string} />
-        
+        <DiffViewer
+          isStreaming={details.status === "started"}
+          diff={details.diff as string}
+          filePath={details.filePath as string}
+          createdAt={new Date(activity.createdAt)}
+        />
       );
     case "run_command":
       return (
         <div className="rounded-lg bg-muted py-2">
-          <div className="flex items-center gap-1 px-2">
-            <span className="text-xs text-muted-foreground">Ran command: </span>
-            <span className="text-xs text-muted-foreground/80">{str(details.command)}</span>
+          <div className="w-full flex justify-between items-center px-2">
+            <div className="flex items-center gap-1">
+              {isStarted ? (
+                <Shimmer duration={1} className="text-xs">Running command...</Shimmer>
+              ) : (
+                <span className="text-2xs text-muted-foreground">Ran command: </span>
+              )}
+              <span className="text-2xs text-muted-foreground/80">{str(details.command)}</span>
+            </div>
+            <Time date={new Date(activity.createdAt)} />
           </div>
-          <Separator className="my-2 bg-border/60" />
-          {!isStarted && typeof details.output === "string" && (
-            <CollapsibleOutput output={details.output} />
+          {typeof details.output === "string" && (
+            <>
+              <Separator className="my-2 bg-border/60" />
+              <CollapsibleOutput output={details.output} />
+            </>
           )}
         </div>
       );
     case "web_search":
       return (
-        <div className="flex flex-col gap-1 bg-muted rounded p-2">
-          {isStarted ? (
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Spinner className="size-2 mr-1" />
-              <Shimmer duration={1} className="text-xs">{`Searching web... "${str(details.query)}"`}</Shimmer>
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">{`Searched web for: "${str(details.query)}"`}</span>
-          )}
-          {!isStarted && typeof details.snippet === "string" && (
-            <p className="text-xs text-muted-foreground/80">{details.snippet}</p>
-          )}
-        </div>
+        <WebSearchDetails
+          details={details}
+          createdAt={new Date(activity.createdAt)}
+        />
       );
     case "pr_created":
       return (
-        <div className="rounded-lg bg-muted py-2 flex px-2 justify-between">
-          <div className="flex items-center gap-1">
-            {isStarted ? (
-              <Shimmer duration={1} className="text-xs text-muted-foreground">Creating pull request...</Shimmer>
-            ) : (
-              <span className="text-xs text-muted-foreground">Created pull request: </span>
-            )}
-            <span className="text-xs text-muted-foreground/80">{str(details.title)}</span>
+        <div className="rounded-lg bg-muted py-2 flex flex-col">
+          <div className="flex items-center justify-between w-full px-2">
+            <div className="flex items-center gap-1">
+              {isStarted ? (
+                <Shimmer duration={1} className="text-xs">Creating pull request...</Shimmer>
+              ) : (
+                <span className="text-xs text-muted-foreground">Created pull request: </span>
+              )}
+              <span className="text-xs text-muted-foreground/80">{str(details.title)}</span>
+            </div>
+            <Time date={new Date(activity.createdAt)} />
           </div>
-          {typeof details.url === "string" && (
-            <Link href={details.url} target="_blank" rel="noopener noreferrer">
-              <button className="bg-background border flex gap-1 items-center px-2 py-1 rounded-md hover:bg-muted-foreground/10 transition-colors text-xs text-muted-foreground cursor-pointer">
-                View on GitHub
-                <ArrowUpRightIcon className="size-4" />
-              </button>
-            </Link>
+          {!isStarted && (
+            <>
+              <Separator className="my-2 bg-border/60" />
+              <div className="flex justify-between items-center gap-1 px-2">
+                <span className="text-xs text-muted-foreground/80">✓ Success</span>
+                {typeof details.url === "string" && (
+                  <Link href={details.url} target="_blank" rel="noopener noreferrer">
+                    <button className="bg-background border flex gap-1 items-center px-2 py-1 rounded-md hover:bg-muted-foreground/10 transition-colors text-xs text-muted-foreground cursor-pointer">
+                      View on GitHub
+                      <ArrowUpRightIcon className="size-4" />
+                    </button>
+                  </Link>
+                )}
+              </div>
+            </>
           )}
         </div>
       )
     case "ci_status":
       if (isStarted) {
         return (
-          <Shimmer duration={1} className="text-sm text-muted-foreground">
+          <Shimmer duration={1.5} className="text-xs">
             Running CI checks...
           </Shimmer>
         );
@@ -327,21 +336,35 @@ function ActivityDetails({
           )}
         </div>
       );
+    case "fix_summary":
+      return (
+        <FixSummary
+          details={details}
+          createdAt={new Date(activity.createdAt)}
+        />
+      );
     case "comment_drafted":
       return (
         <DraftComment
           details={details}
           issueId={issueId}
           alreadyApproved={alreadyApproved}
+          createdAt={new Date(activity.createdAt)}
+          isStreaming={details.status === "started"}
         />
       );
     case "comment_posted":
       return null;
     case "error":
       return (
-        <p className={`text-sm ${isFailed ? "text-red-600 font-medium" : "text-red-600"}`}>
-          {str(details.message)}
+        <p className="text-xs">
+          <span className="text-foreground">Error: </span>
+          <span className="text-muted-foreground/80">{str(details.message)}</span>
         </p>
+      );
+    case "text_generated":
+      return (
+        <p className="text-sm text-foreground">{str(details.text)}</p>
       );
     case "done":
       return null;

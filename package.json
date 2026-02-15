@@ -18,7 +18,7 @@
     "preview": "next build && next start",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "inngest:dev": "npx inngest-cli@latest dev",
+    "inngest": "npx inngest-cli@latest dev",
     "gh:create-issue": "node scripts/create-test-issue.mjs",
     "ngrok": "node scripts/ngrok.mjs"
   },
@@ -51,6 +51,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
+    "react-spinners": "^0.17.0",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
     "superjson": "^2.2.1",

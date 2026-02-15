@@ -1,5 +1,6 @@
 export const ISSUE_ACTIVITY_TYPES = [
   "triage",
+  "text_generated",
   "reasoning",
   "repo_clone",
   "web_search",
@@ -15,6 +16,7 @@ export const ISSUE_ACTIVITY_TYPES = [
   "comment_posted",
   "escalated",
   "done",
+  "fix_summary",
 ] as const;
 
 export const ISSUE_STATUSES = [
