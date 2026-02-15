@@ -1,0 +1,1 @@
+export const CONTACT_EMAIL = "lorenz.krinner@gmail.com";

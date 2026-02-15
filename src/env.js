@@ -20,6 +20,11 @@ export const env = createEnv({
     NGROK_DOMAIN: z.string().optional(),
     INNGEST_EVENT_KEY: z.string().optional(),
     INNGEST_SIGNING_KEY: z.string().optional(),
+    STRIPE_SECRET_KEY: z.string(),
+    STRIPE_WEBHOOK_SECRET: z.string(),
+    STRIPE_WAITLIST_DEPOSIT_PRICE_ID: z.string(),
+    RESEND_API_KEY: z.string(),
+    RESEND_AUDIENCE_ID: z.string(),
   },
 
   /**
@@ -48,6 +53,11 @@ export const env = createEnv({
     NGROK_DOMAIN: process.env.NGROK_DOMAIN,
     INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    STRIPE_WAITLIST_DEPOSIT_PRICE_ID: process.env.STRIPE_WAITLIST_DEPOSIT_PRICE_ID,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    RESEND_AUDIENCE_ID: process.env.RESEND_AUDIENCE_ID,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
