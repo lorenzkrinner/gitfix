@@ -1,13 +1,12 @@
 import {
   SignInButton,
-  SignUpButton,
   SignedIn,
   SignedOut,
   UserButton,
 } from "@clerk/nextjs";
 import { Button } from "~/components/ui/button";
 import { NavArrowRightSolid } from 'iconoir-react';
-import { GitFork, BrainResearch, Code, RefreshDouble, WarningTriangle, Activity } from 'iconoir-react';
+import { GitFork, Activity } from 'iconoir-react';
 import { HydrateClient } from "~/trpc/server";
 import Link from "next/link";
 import Image from "next/image";

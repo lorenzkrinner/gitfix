@@ -8,5 +8,4 @@ export default {
   dbCredentials: {
     url: env.DATABASE_URL,
   },
-  tablesFilter: ["repository", "issue", "issue_activity", "waitlister"],
 } satisfies Config;

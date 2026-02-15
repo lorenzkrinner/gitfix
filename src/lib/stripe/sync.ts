@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { stripe } from "~/lib/stripe/stripe";
 import { db } from "~/server/db";
@@ -23,10 +23,9 @@ export async function syncStripeData(stripeCustomerId: string, email?: string) {
     return;
   };
 
-  const where = and(
-    ...(email ? [eq(waitlister.email, email)] : []),
-    ...(stripeCustomerId ? [eq(waitlister.stripeCustomerId, stripeCustomerId)] : []),
-  )
+  const where = email
+    ? eq(waitlister.email, email)
+    : eq(waitlister.stripeCustomerId, stripeCustomerId);
 
   await db
     .update(waitlister)

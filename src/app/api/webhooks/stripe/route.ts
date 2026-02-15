@@ -55,13 +55,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   }
 
-  console.log("Recevied", event.type, "event");
+  console.log("Received", event.type, "event");
+
+  const customerId = extractCustomerIdFromEvent(event);
+  let email: string | undefined;
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const email = session.customer_email ?? session.metadata?.email;
-    
-    const stripeCustomerId = extractCustomerIdFromEvent(event);
+    email = session.customer_email ?? session.metadata?.email;
 
     if (!email) {
       console.error("No email in checkout session metadata");
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await createWaitlistEntry(email, "deposit", {
-      stripeCustomerId: stripeCustomerId ?? undefined,
+      stripeCustomerId: customerId ?? undefined,
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -82,14 +83,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const customerId = extractCustomerIdFromEvent(event);
   if (customerId) {
     try {
-      let email: string | undefined;
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        email = session.customer_email ?? session.metadata?.email;
-      }
       await syncStripeData(customerId, email);
     } catch (error) {
       console.error("Failed to sync Stripe data:", error);

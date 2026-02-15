@@ -7,7 +7,7 @@ import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
 import { waitlister } from "~/server/db/tables/waitlister";
 import { stripe } from "~/lib/stripe/stripe";
-import { loops } from "~/lib/email/loops";
+import { resend } from "~/lib/email/resend";
 import { env } from "~/env";
 import { getBaseUrl } from "~/utils/get-base-url";
 
@@ -27,53 +27,43 @@ export async function createWaitlistEntry(
   opts?: { stripeCustomerId?: string | null },
 ): Promise<CreateWaitlistEntryResult> {
   const onClerk = await checkAlreadyOnClerk(email);
-  const onLoops = await checkAlreadyOnLoops(email);
+  const onResend = await checkAlreadyOnResend(email);
 
-  if (onClerk && onLoops && type === "free") {
+  if (onClerk && onResend && type === "free") {
     return { ok: false, error: "DUPLICATE", message: DUPLICATE_MESSAGE };
   }
 
   if (!onClerk) {
     await clerkClient.waitlistEntries.create({ emailAddress: email });
   }
-  
-  let loopsContactId: string | null = null;
-  if (!onLoops) {
-    const loopsResp = await loops.createContact({
-      email,
-      properties: { source: "waitlist" },
-    });
-    loopsContactId = loopsResp.id;
-  }
 
+  let resendContactId: string | null = null;
+  if (!onResend) {
+    const contact = await resend.contacts.create({
+      email,
+      audienceId: env.RESEND_AUDIENCE_ID,
+    });
+    resendContactId = contact.data?.id ?? null;
+  }
 
   const stripeCustomerId = opts?.stripeCustomerId ?? null;
 
-  if (type === "deposit") {
-    await db
-      .insert(waitlister)
-      .values({
-        email,
-        type: "deposit",
-        ...(loopsContactId && { loopsContactId }),
-        ...(stripeCustomerId && { stripeCustomerId }),
-      })
-      .onConflictDoUpdate({
-        target: waitlister.email,
-        set: {
-          type: "deposit",
-          ...(loopsContactId && { loopsContactId }),
-          ...(stripeCustomerId && { stripeCustomerId }),
-        },
-      });
-  } else {
-    await db.insert(waitlister).values({
+  await db
+    .insert(waitlister)
+    .values({
       email,
-      type: "free",
-      ...(loopsContactId && { loopsContactId }),
+      type,
+      ...(resendContactId && { resendContactId }),
       ...(stripeCustomerId && { stripeCustomerId }),
+    })
+    .onConflictDoUpdate({
+      target: waitlister.email,
+      set: {
+        ...(type === "deposit" && { type: "deposit" as const }),
+        ...(resendContactId && { resendContactId }),
+        ...(stripeCustomerId && { stripeCustomerId }),
+      },
     });
-  }
 
   return { ok: true };
 }
@@ -102,7 +92,7 @@ export const waitlistRouter = createTRPCRouter({
           email: input.email,
           metadata: {
             source: "waitlist",
-          }
+          },
         });
         customerId = customer.id;
       }
@@ -136,9 +126,9 @@ export const waitlistRouter = createTRPCRouter({
     }),
 });
 
-async function checkAlreadyOnLoops(email: string) {
-  const existing = await loops.findContact({ email });
-  return existing.length > 0;
+async function checkAlreadyOnResend(email: string) {
+  const existing = await resend.contacts.list({ audienceId: env.RESEND_AUDIENCE_ID });
+  return existing.data?.data?.some((contact) => contact.email === email) ?? false;
 }
 
 export async function checkAlreadyOnClerk(email: string) {
