@@ -9,8 +9,8 @@ import { NavArrowRightSolid } from 'iconoir-react';
 import { GitFork, Activity } from 'iconoir-react';
 import { HydrateClient } from "~/trpc/server";
 import Link from "next/link";
-import Image from "next/image";
 import WaitlistDialog from "./_components/waitlist-dialog";
+import { VideoDemoDialog } from "./_components/video-demo-dialog";
 import Logo from "~/components/logo";
 import { CONTACT_EMAIL } from "~/lib/constants/global";
 import { ArrowPathRoundedSquareIcon, CodeBracketSquareIcon, ExclamationTriangleIcon, ScissorsIcon } from "@heroicons/react/24/solid";
@@ -83,7 +83,7 @@ export default async function Home() {
             <WaitlistDialog>
               <Button variant="default" className="w-fit">Join the waitlist</Button>
             </WaitlistDialog>
-            <Image src="/web/hero.png" alt="Gitfix hero image" className="rounded-lg" width={1000} height={1000} />
+            <VideoDemoDialog />
           </div>
         </section>
         <section className="w-full px-4 pb-20">
